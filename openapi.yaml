@@ -1,0 +1,354 @@
+openapi: 3.1.0
+info:
+  title: TaskMaster API
+  version: 1.0.0
+  description: Collaborative task tracking API. Team membership never implies project-content access. Optional notifications and AI are disabled unless configured.
+servers:
+  - url: http://localhost:3000/api/v1
+security:
+  - bearerAuth: []
+paths:
+  /health/live:
+    { get: { security: [], responses: { '200': { $ref: '#/components/responses/Success' } } } }
+  /health/ready:
+    {
+      get:
+        {
+          security: [],
+          responses:
+            {
+              '200': { $ref: '#/components/responses/Success' },
+              '503': { $ref: '#/components/responses/Problem' },
+            },
+        },
+    }
+  /auth/register:
+    {
+      post:
+        {
+          security: [],
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses:
+            {
+              '201': { $ref: '#/components/responses/Success' },
+              '422': { $ref: '#/components/responses/Problem' },
+            },
+        },
+    }
+  /auth/login:
+    {
+      post:
+        {
+          security: [],
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses:
+            {
+              '200': { $ref: '#/components/responses/Success' },
+              '401': { $ref: '#/components/responses/Problem' },
+            },
+        },
+    }
+  /auth/refresh:
+    {
+      post:
+        {
+          security: [{ refreshCookie: [] }],
+          responses:
+            {
+              '200': { $ref: '#/components/responses/Success' },
+              '401': { $ref: '#/components/responses/Problem' },
+            },
+        },
+    }
+  /auth/logout: { post: { responses: { '204': { description: Logged out } } } }
+  /auth/logout-all: { post: { responses: { '204': { description: All sessions revoked } } } }
+  /users/me:
+    {
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      patch:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /teams:
+    {
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      post:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '201': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /teams/{teamId}:
+    {
+      parameters: [{ $ref: '#/components/parameters/TeamId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      patch:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+      delete: { responses: { '204': { description: Deleted } } },
+    }
+  /teams/{teamId}/restore:
+    {
+      parameters: [{ $ref: '#/components/parameters/TeamId' }],
+      post: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+    }
+  /teams/{teamId}/members:
+    {
+      parameters: [{ $ref: '#/components/parameters/TeamId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+    }
+  /teams/{teamId}/members/{userId}:
+    {
+      parameters:
+        [{ $ref: '#/components/parameters/TeamId' }, { $ref: '#/components/parameters/UserId' }],
+      patch:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+      delete: { responses: { '204': { description: Removed } } },
+    }
+  /teams/{teamId}/ownership-transfer:
+    {
+      parameters: [{ $ref: '#/components/parameters/TeamId' }],
+      post:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '204': { description: Transferred } },
+        },
+    }
+  /teams/{teamId}/invitations:
+    {
+      parameters: [{ $ref: '#/components/parameters/TeamId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      post:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '201': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /teams/{teamId}/invitations/{invitationId}:
+    {
+      parameters:
+        [
+          { $ref: '#/components/parameters/TeamId' },
+          { name: invitationId, in: path, required: true, schema: { type: string, format: uuid } },
+        ],
+      delete: { responses: { '204': { description: Revoked } } },
+    }
+  /team-invitations/accept:
+    {
+      post:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /teams/{teamId}/projects:
+    {
+      parameters: [{ $ref: '#/components/parameters/TeamId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      post:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '201': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /projects/{projectId}:
+    {
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      patch:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+      delete: { responses: { '204': { description: Deleted } } },
+    }
+  /projects/{projectId}/restore:
+    {
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }],
+      post: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+    }
+  /projects/{projectId}/members:
+    {
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      post:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '201': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /projects/{projectId}/members/{userId}:
+    {
+      parameters:
+        [{ $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/UserId' }],
+      patch:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+      delete: { responses: { '204': { description: Removed } } },
+    }
+  /projects/{projectId}/tasks:
+    {
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }],
+      get:
+        {
+          parameters: [{ $ref: '#/components/parameters/Cursor' }],
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+      post:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '201': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /tasks:
+    {
+      get:
+        {
+          parameters: [{ $ref: '#/components/parameters/Cursor' }],
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /tasks/{taskId}:
+    {
+      parameters: [{ $ref: '#/components/parameters/TaskId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      patch:
+        {
+          description: Requires the last observed version; stale versions return TASK_VERSION_CONFLICT.,
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses:
+            {
+              '200': { $ref: '#/components/responses/Success' },
+              '409': { $ref: '#/components/responses/Problem' },
+            },
+        },
+      delete: { responses: { '204': { description: Soft-deleted } } },
+    }
+  /tasks/{taskId}/restore:
+    {
+      parameters: [{ $ref: '#/components/parameters/TaskId' }],
+      post: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+    }
+  /tasks/{taskId}/comments:
+    {
+      parameters: [{ $ref: '#/components/parameters/TaskId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+      post:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '201': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /comments/{commentId}:
+    {
+      parameters:
+        [{ name: commentId, in: path, required: true, schema: { type: string, format: uuid } }],
+      patch:
+        {
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+      delete: { responses: { '204': { description: Soft-deleted } } },
+    }
+  /tasks/{taskId}/attachments/uploads:
+    {
+      parameters: [{ $ref: '#/components/parameters/TaskId' }],
+      post:
+        {
+          description: Initializes direct object-storage upload and returns a ten-minute presigned URL.,
+          requestBody: { $ref: '#/components/requestBodies/JsonBody' },
+          responses: { '201': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /tasks/{taskId}/attachments:
+    {
+      parameters: [{ $ref: '#/components/parameters/TaskId' }],
+      get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+    }
+  /attachments/{attachmentId}/complete:
+    {
+      parameters: [{ $ref: '#/components/parameters/AttachmentId' }],
+      post:
+        {
+          description: Verifies object metadata before marking READY.,
+          responses: { '200': { $ref: '#/components/responses/Success' } },
+        },
+    }
+  /attachments/{attachmentId}/download-url:
+    {
+      parameters: [{ $ref: '#/components/parameters/AttachmentId' }],
+      post: { responses: { '200': { $ref: '#/components/responses/Success' } } },
+    }
+  /attachments/{attachmentId}:
+    {
+      parameters: [{ $ref: '#/components/parameters/AttachmentId' }],
+      delete: { responses: { '204': { description: Deleted } } },
+    }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    refreshCookie: { type: apiKey, in: cookie, name: taskmaster_refresh }
+  parameters:
+    TeamId: { name: teamId, in: path, required: true, schema: { type: string, format: uuid } }
+    ProjectId: { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    TaskId: { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
+    UserId: { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    AttachmentId:
+      { name: attachmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    Cursor:
+      {
+        name: cursor,
+        in: query,
+        schema: { type: string },
+        description: Signed keyset cursor bound to filters and sort.,
+      }
+  requestBodies:
+    JsonBody:
+      {
+        required: true,
+        content:
+          {
+            application/json: { schema: { type: object, additionalProperties: true }, example: {} },
+          },
+      }
+  responses:
+    Success:
+      {
+        description: Success,
+        content:
+          {
+            application/json:
+              { schema: { type: object, required: [data], properties: { data: {} } } },
+          },
+      }
+    Problem:
+      {
+        description: RFC Problem Details,
+        content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } },
+      }
+  schemas:
+    Problem:
+      {
+        type: object,
+        required: [type, title, status, detail, code, requestId],
+        properties:
+          {
+            type: { type: string, format: uri },
+            title: { type: string },
+            status: { type: integer },
+            detail: { type: string },
+            instance: { type: string },
+            code: { type: string },
+            requestId: { type: string, format: uuid },
+            errors: { type: array, items: { type: object } },
+          },
+      }
