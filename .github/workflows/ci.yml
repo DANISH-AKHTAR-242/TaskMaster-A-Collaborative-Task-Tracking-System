@@ -19,14 +19,6 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U taskmaster -d taskmaster_test"
           --health-interval 5s --health-timeout 3s --health-retries 20
-      minio:
-        image: minio/minio:RELEASE.2025-07-23T15-54-02Z
-        env:
-          MINIO_ROOT_USER: minio
-          MINIO_ROOT_PASSWORD: minioadmin
-        ports:
-          - 9000:9000
-        options: --health-cmd "mc ready local" --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://taskmaster:taskmaster@localhost:5432/taskmaster_test
@@ -39,6 +31,20 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Start MinIO and create test bucket
+        run: |
+          docker run --detach --name taskmaster-minio \
+            --publish 9000:9000 \
+            --env MINIO_ROOT_USER=minio \
+            --env MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-07-23T15-54-02Z server /data
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:9000/minio/health/live; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://localhost:9000/minio/health/live
+          docker exec taskmaster-minio mc alias set local http://127.0.0.1:9000 minio minioadmin
+          docker exec taskmaster-minio mc mb --ignore-existing local/taskmaster
       - name: Generate ephemeral test JWT keys
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/private.pem
