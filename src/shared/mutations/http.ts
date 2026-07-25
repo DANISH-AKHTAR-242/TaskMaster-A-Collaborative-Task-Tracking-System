@@ -8,11 +8,14 @@ export function mutationContext(
   allowIdempotency = false,
 ): MutationContext {
   const idempotencyKey = allowIdempotency ? request.header('idempotency-key') : undefined;
+  const queryStart = request.originalUrl.indexOf('?');
+  const concreteRoute =
+    queryStart === -1 ? request.originalUrl : request.originalUrl.slice(0, queryStart);
   return {
     actorUserId,
     requestId: request.requestId,
     method: request.method,
-    route,
+    route: allowIdempotency ? concreteRoute : route,
     requestBody: request.body,
     ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
   };

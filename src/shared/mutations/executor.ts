@@ -33,7 +33,7 @@ export interface MutationResult {
 
 export interface MutationResponse {
   status: number;
-  body: Prisma.InputJsonValue;
+  body: Prisma.JsonValue;
   replayed: boolean;
 }
 
@@ -48,8 +48,8 @@ function validateKey(key: string | undefined): void {
   }
 }
 
-function jsonValue(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+function jsonValue(value: unknown): Prisma.JsonValue {
+  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.JsonValue;
 }
 
 export async function executeMutation(
@@ -83,7 +83,7 @@ export async function executeMutation(
             'The idempotency key was reused with a different request.',
           );
         }
-        if (existing.responseStatus === null || existing.responseBody === null) {
+        if (existing.responseStatus === null) {
           throw conflict(
             'IDEMPOTENCY_REQUEST_IN_PROGRESS',
             'The original request is still running.',
@@ -122,7 +122,7 @@ export async function executeMutation(
           route: context.route,
           requestHash,
           responseStatus: result.status,
-          responseBody: body,
+          responseBody: body ?? Prisma.JsonNull,
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
       });

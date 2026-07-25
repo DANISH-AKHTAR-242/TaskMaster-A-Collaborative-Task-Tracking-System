@@ -373,6 +373,21 @@ describe('TaskMaster integration workflow', () => {
       { title: 'Once Task' },
       (value) => value['id'] as string,
     );
+    const secondProjectId = await replayCreate(
+      `/api/v1/teams/${teamId}/projects`,
+      'project-2',
+      { name: 'Second Project' },
+      (value) => value['id'] as string,
+    );
+    const sameKeyDifferentProject = data(
+      await request(app)
+        .post(`/api/v1/projects/${secondProjectId}/tasks`)
+        .set(auth(token))
+        .set('Idempotency-Key', 'task-1')
+        .send({ title: 'Once Task' })
+        .expect(201),
+    );
+    expect(sameKeyDifferentProject['id']).not.toBe(taskId);
     await replayCreate(
       `/api/v1/teams/${teamId}/invitations`,
       'invitation-1',
@@ -485,6 +500,32 @@ describe('TaskMaster integration workflow', () => {
       }),
     ).toBe(0);
     expect(await db.idempotencyKey.count({ where: { key: 'rollback-key' } })).toBe(0);
+
+    const nullBodyContext = {
+      actorUserId: user.id,
+      requestId: '00000000-0000-4000-8000-000000000002',
+      method: 'POST',
+      route: '/test/null-body',
+      idempotencyKey: 'null-body-key',
+      requestBody: null,
+    } as const;
+    const nullBodyOperation = () =>
+      Promise.resolve({
+        status: 204,
+        body: null,
+        audit: { action: 'NULL_BODY_TEST', entityType: 'USER', entityId: user.id },
+      });
+    expect(await executeMutation(db, nullBodyContext, nullBodyOperation)).toMatchObject({
+      status: 204,
+      body: null,
+      replayed: false,
+    });
+    expect(await executeMutation(db, nullBodyContext, nullBodyOperation)).toMatchObject({
+      status: 204,
+      body: null,
+      replayed: true,
+    });
+    expect(await db.auditLog.count({ where: { action: 'NULL_BODY_TEST' } })).toBe(1);
   });
 
   it('enforces invitation state, last-owner safety, and project membership boundaries', async () => {
