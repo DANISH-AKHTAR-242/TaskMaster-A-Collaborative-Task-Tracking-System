@@ -3,7 +3,7 @@ import type { Env } from '../../config/env.js';
 import { unauthorized } from '../../shared/errors/app-error.js';
 import type { AuthService } from './service.js';
 
-function metadata(request: Parameters<RequestHandler>[0]) {
+export function sessionMetadata(request: Parameters<RequestHandler>[0]) {
   const userAgent = request.get('user-agent');
   return {
     ...(userAgent === undefined ? {} : { userAgent }),
@@ -11,7 +11,10 @@ function metadata(request: Parameters<RequestHandler>[0]) {
   };
 }
 
-function readCookie(request: Parameters<RequestHandler>[0], name: string): string | undefined {
+export function readCookie(
+  request: Parameters<RequestHandler>[0],
+  name: string,
+): string | undefined {
   const cookies: unknown = request.cookies;
   if (typeof cookies !== 'object' || cookies === null) return undefined;
   const value = (cookies as Record<string, unknown>)[name];
@@ -34,18 +37,22 @@ export class AuthController {
     };
   }
 
-  private setCookie(response: Parameters<RequestHandler>[1], token: string): void {
+  public setCookie(response: Parameters<RequestHandler>[1], token: string): void {
     response.cookie(this.env.REFRESH_COOKIE_NAME, token, this.cookieOptions);
   }
 
+  public clearCookie(response: Parameters<RequestHandler>[1]): void {
+    response.clearCookie(this.env.REFRESH_COOKIE_NAME, this.cookieOptions);
+  }
+
   public readonly register: RequestHandler = async (request, response) => {
-    const result = await this.service.register(request.body as never, metadata(request));
+    const result = await this.service.register(request.body as never, sessionMetadata(request));
     this.setCookie(response, result.refreshToken);
     response.status(201).json({ data: { user: result.user, accessToken: result.accessToken } });
   };
 
   public readonly login: RequestHandler = async (request, response) => {
-    const result = await this.service.login(request.body as never, metadata(request));
+    const result = await this.service.login(request.body as never, sessionMetadata(request));
     this.setCookie(response, result.refreshToken);
     response.json({ data: { user: result.user, accessToken: result.accessToken } });
   };
@@ -53,8 +60,9 @@ export class AuthController {
   public readonly refresh: RequestHandler = async (request, response) => {
     const result = await this.service.refresh(
       readCookie(request, this.env.REFRESH_COOKIE_NAME),
-      metadata(request),
+      sessionMetadata(request),
     );
+    if (result.reused) throw unauthorized();
     this.setCookie(response, result.refreshToken);
     response.json({ data: { accessToken: result.accessToken } });
   };
@@ -66,7 +74,7 @@ export class AuthController {
         request.auth?.sessionId,
       );
     } finally {
-      response.clearCookie(this.env.REFRESH_COOKIE_NAME, this.cookieOptions);
+      this.clearCookie(response);
     }
     response.status(204).send();
   };
@@ -74,6 +82,7 @@ export class AuthController {
   public readonly logoutAll: RequestHandler = async (request, response) => {
     if (request.auth === undefined) throw unauthorized();
     await this.service.logoutAll(request.auth.userId);
-    response.clearCookie(this.env.REFRESH_COOKIE_NAME, this.cookieOptions).status(204).send();
+    this.clearCookie(response);
+    response.status(204).send();
   };
 }

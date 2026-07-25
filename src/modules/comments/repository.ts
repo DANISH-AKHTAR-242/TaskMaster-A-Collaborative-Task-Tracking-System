@@ -1,6 +1,6 @@
-import type { DatabaseClient } from '../../infrastructure/database/prisma.js';
+import type { DatabaseHandle } from '../../infrastructure/database/prisma.js';
 export class CommentRepository {
-  constructor(private readonly db: DatabaseClient) {}
+  constructor(private readonly db: DatabaseHandle) {}
   access(taskId: string, userId: string) {
     return this.db.projectMember.findFirst({
       where: {

@@ -1,6 +1,6 @@
 import type { Env } from '../../config/env.js';
 import type { ProjectRole, TaskStatus } from '../../generated/prisma/enums.js';
-import { conflict, forbidden, notFound } from '../../shared/errors/app-error.js';
+import { AppError, conflict, forbidden, notFound } from '../../shared/errors/app-error.js';
 import { decodeCursor, encodeCursor, filterHash } from '../../shared/pagination/cursor.js';
 import { canCreateTask, canDeleteTask, canUpdateTask } from './policy.js';
 import type { TaskFilters, TaskRepository } from './repository.js';
@@ -73,23 +73,61 @@ export class TaskService {
     query: Omit<TaskFilters, 'cursorId'> & { assignee?: 'me'; cursor?: string },
   ) {
     if (projectId !== undefined) await this.role(projectId, userId);
-    const bound = { ...query, cursor: undefined, limit: undefined };
+    const effectiveSort = query.search === undefined ? query.sort : 'rank';
+    const effectiveOrder = query.search === undefined ? query.order : 'desc';
+    const bound = {
+      ...query,
+      sort: effectiveSort,
+      order: effectiveOrder,
+      cursor: undefined,
+      limit: undefined,
+    };
     const hash = filterHash(bound);
-    const cursorId = query.cursor
-      ? decodeCursor(query.cursor, this.env.CURSOR_SECRET, hash).id
+    const cursor = query.cursor
+      ? decodeCursor(query.cursor, this.env.CURSOR_SECRET, hash)
       : undefined;
+    if (
+      cursor !== undefined &&
+      (cursor.sort !== effectiveSort || cursor.order !== effectiveOrder)
+    ) {
+      throw new AppError(
+        422,
+        'INVALID_CURSOR',
+        'Request validation failed',
+        'The pagination cursor does not match the requested sort.',
+      );
+    }
     const rows = await this.repo.list(projectId, userId, {
       ...query,
+      order: effectiveOrder,
       ...(query.assignee === 'me'
         ? { assigneeId: userId }
         : query.assigneeId === undefined
           ? {}
           : { assigneeId: query.assigneeId }),
-      ...(cursorId ? { cursorId } : {}),
+      ...(cursor === undefined ? {} : { cursor }),
     });
     const hasMore = rows.length > query.limit;
-    const data = rows.slice(0, query.limit);
-    const last = data.at(-1);
+    const selected = rows.slice(0, query.limit);
+    const last = selected.at(-1);
+    const data = selected.map(({ searchRank, ...task }) => {
+      void searchRank;
+      return task;
+    });
+    const cursorValue =
+      last === undefined
+        ? null
+        : query.search !== undefined
+          ? String(last.searchRank)
+          : query.sort === 'createdAt'
+            ? last.createdAt.toISOString()
+            : query.sort === 'updatedAt'
+              ? last.updatedAt.toISOString()
+              : query.sort === 'dueAt'
+                ? (last.dueAt?.toISOString() ?? null)
+                : query.sort === 'status'
+                  ? last.status
+                  : last.title;
     return {
       data,
       page: {
@@ -99,9 +137,9 @@ export class TaskService {
             ? encodeCursor(
                 {
                   filterHash: hash,
-                  sort: query.sort,
-                  order: query.order,
-                  value: last.title,
+                  sort: effectiveSort,
+                  order: effectiveOrder,
+                  value: cursorValue,
                   id: last.id,
                 },
                 this.env.CURSOR_SECRET,

@@ -17,6 +17,9 @@ export interface AuthResult {
   refreshToken: string;
   user: UserDto;
 }
+export type RefreshResult =
+  | { reused: false; accessToken: string; refreshToken: string; userId: string }
+  | { reused: true; userId: string };
 
 function isUniqueError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
@@ -95,19 +98,14 @@ export class AuthService {
   public async refresh(
     refreshToken: string | undefined,
     metadata: SessionMetadata,
-  ): Promise<Omit<AuthResult, 'user'>> {
+  ): Promise<RefreshResult> {
     if (refreshToken === undefined) throw unauthorized();
     const current = await this.sessions.findByTokenHash(sha256(refreshToken));
     if (current === null || current.expiresAt <= new Date() || current.user.deletedAt !== null)
       throw unauthorized();
     if (current.revokedAt !== null || current.replacedById !== null) {
       await this.sessions.revokeFamily(current.tokenFamilyId);
-      throw new AppError(
-        401,
-        'REFRESH_TOKEN_REUSED',
-        'Authentication required',
-        'The session family has been revoked.',
-      );
+      return { reused: true, userId: current.userId };
     }
     const replacementToken = randomOpaqueToken();
     const replacement = await this.sessions.rotate(current.id, {
@@ -117,6 +115,8 @@ export class AuthService {
     });
     if (replacement === null) throw unauthorized();
     return {
+      reused: false,
+      userId: current.userId,
       accessToken: await this.jwt.sign({ userId: current.userId, sessionId: replacement.id }),
       refreshToken: replacementToken,
     };
@@ -125,13 +125,21 @@ export class AuthService {
   public async logout(
     refreshToken: string | undefined,
     sessionId: string | undefined,
-  ): Promise<void> {
+  ): Promise<string | null> {
     if (refreshToken !== undefined) {
       const session = await this.sessions.findByTokenHash(sha256(refreshToken));
-      if (session !== null) await this.sessions.revokeSession(session.id);
+      if (session !== null) {
+        await this.sessions.revokeSession(session.id);
+        return session.userId;
+      }
     } else if (sessionId !== undefined) {
-      await this.sessions.revokeSession(sessionId);
+      const session = await this.sessions.findSession(sessionId);
+      if (session !== null) {
+        await this.sessions.revokeSession(sessionId);
+        return session.userId;
+      }
     }
+    return null;
   }
 
   public async logoutAll(userId: string): Promise<void> {

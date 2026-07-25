@@ -11,7 +11,7 @@ export function normalizedRequestHash(body: unknown): string {
               .map(([k, v]) => [k, normalize(v)]),
           )
         : value;
-  return sha256(JSON.stringify(normalize(body)));
+  return sha256(JSON.stringify(normalize(body) ?? null));
 }
 export function assertIdempotentReplay(storedHash: string, body: unknown): void {
   if (storedHash !== normalizedRequestHash(body))

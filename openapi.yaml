@@ -27,6 +27,7 @@ paths:
       post:
         {
           security: [],
+          parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }],
           requestBody: { $ref: '#/components/requestBodies/JsonBody' },
           responses:
             {
@@ -76,6 +77,7 @@ paths:
       get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
       post:
         {
+          parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }],
           requestBody: { $ref: '#/components/requestBodies/JsonBody' },
           responses: { '201': { $ref: '#/components/responses/Success' } },
         },
@@ -127,6 +129,7 @@ paths:
       get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
       post:
         {
+          parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }],
           requestBody: { $ref: '#/components/requestBodies/JsonBody' },
           responses: { '201': { $ref: '#/components/responses/Success' } },
         },
@@ -154,6 +157,7 @@ paths:
       get: { responses: { '200': { $ref: '#/components/responses/Success' } } },
       post:
         {
+          parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }],
           requestBody: { $ref: '#/components/requestBodies/JsonBody' },
           responses: { '201': { $ref: '#/components/responses/Success' } },
         },
@@ -205,6 +209,7 @@ paths:
         },
       post:
         {
+          parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }],
           requestBody: { $ref: '#/components/requestBodies/JsonBody' },
           responses: { '201': { $ref: '#/components/responses/Success' } },
         },
@@ -265,6 +270,7 @@ paths:
       post:
         {
           description: Initializes direct object-storage upload and returns a ten-minute presigned URL.,
+          parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }],
           requestBody: { $ref: '#/components/requestBodies/JsonBody' },
           responses: { '201': { $ref: '#/components/responses/Success' } },
         },
@@ -310,6 +316,14 @@ components:
         in: query,
         schema: { type: string },
         description: Signed keyset cursor bound to filters and sort.,
+      }
+    IdempotencyKey:
+      {
+        name: Idempotency-Key,
+        in: header,
+        required: false,
+        schema: { type: string, minLength: 1, maxLength: 200 },
+        description: Replays the stored response for an identical create request for 24 hours.,
       }
   requestBodies:
     JsonBody:

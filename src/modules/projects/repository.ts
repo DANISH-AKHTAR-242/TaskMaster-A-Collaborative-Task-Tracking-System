@@ -1,7 +1,7 @@
 import type { ProjectRole } from '../../generated/prisma/enums.js';
-import type { DatabaseClient } from '../../infrastructure/database/prisma.js';
+import { inTransaction, type DatabaseHandle } from '../../infrastructure/database/prisma.js';
 export class ProjectRepository {
-  constructor(private readonly db: DatabaseClient) {}
+  constructor(private readonly db: DatabaseHandle) {}
   teamMembership(teamId: string, userId: string) {
     return this.db.teamMember.findFirst({
       where: { teamId, userId, removedAt: null, team: { deletedAt: null } },
@@ -17,7 +17,7 @@ export class ProjectRepository {
     userId: string,
     input: { name: string; description?: string | null },
   ) {
-    return this.db.$transaction(async (tx) => {
+    return inTransaction(this.db, async (tx) => {
       const project = await tx.project.create({ data: { teamId, createdBy: userId, ...input } });
       await tx.projectMember.create({
         data: { projectId: project.id, userId, addedBy: userId, role: 'ADMIN' },
