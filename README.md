@@ -7,9 +7,9 @@ TaskMaster is a production-oriented Express 5 REST API for collaborative team, p
 - Rotating opaque refresh sessions, Argon2id passwords, asymmetric 15-minute JWT access tokens, profile management, and session revocation.
 - Teams, hashed seven-day invitations, ownership transfer, and final-owner protection.
 - Projects with independent `ADMIN`, `MEMBER`, and read-only `VIEWER` roles.
-- Versioned soft-deletable tasks, assignments, status transitions, signed keyset cursors, filters, and PostgreSQL full-text indexes.
+- Versioned soft-deletable tasks, assignments, status transitions, signed keyset cursors for every supported sort, filters, and ranked PostgreSQL `TSVECTOR` search.
 - Comments and direct-to-S3 attachments with metadata verification and server-controlled keys.
-- RFC Problem Details, Zod input validation, Pino JSON logs, request IDs, Helmet, CORS, rate limits, audit records, health probes, Docker, CI, OpenAPI, and deterministic seed data.
+- RFC Problem Details, Zod input validation, Pino JSON logs, request IDs, Helmet, CORS, rate limits, transaction-coupled audit records, database-backed create idempotency, health probes, Docker, CI, OpenAPI, and deterministic seed data.
 - Notification and AI database foundations are present; runtime features are disabled by default.
 
 Routes/controllers translate HTTP, services implement business rules, policies decide authorization, repositories contain Prisma access, and `infrastructure` contains database/storage adapters. Public DTOs omit hashes, internal storage keys, and Prisma-only fields.
@@ -41,7 +41,7 @@ openssl pkey -in private.pem -pubout -out public.pem
 [Convert]::ToBase64String([IO.File]::ReadAllBytes('public.pem'))
 ```
 
-The API is at `http://localhost:3000/api/v1`; MinIO is at ports 9000/9001. Run the optional Mailpit profile with `docker compose --profile mail up -d`. Do not reuse example local credentials in production.
+The API is at `http://localhost:3000/api/v1`; the Compose PostgreSQL port is 5433 and MinIO is at ports 9000/9001. Override the database mapping with `POSTGRES_PORT` if needed. Run the optional Mailpit profile with `docker compose --profile mail up -d`. Do not reuse example local credentials in production.
 
 ## Configuration
 
@@ -55,7 +55,7 @@ Copy `.env.example`; every variable is documented by its name and validated at s
 
 ```bash
 npm run dev             # API with watch mode
-npm run dev:worker      # optional worker process
+npm run dev:worker      # worker; runs stale attachment cleanup immediately and hourly
 npm run format:check
 npm run lint
 npm run typecheck
@@ -68,13 +68,15 @@ npm start
 
 The OpenAPI 3.1 contract is [openapi.yaml](./openapi.yaml). Production interactive documentation should be separately access-controlled; this service does not expose it publicly.
 
+Create endpoints for registration, teams, invitations, projects, tasks, and attachment-upload initialization accept an optional `Idempotency-Key` header (1–200 characters). Records are retained for 24 hours. Replaying the same method, route, actor, key, and normalized body returns the stored status/body with `Idempotency-Replayed: true`; changing the body returns `409 IDEMPOTENCY_KEY_REUSED`. Concurrent duplicates are serialized in PostgreSQL.
+
 ## Example API workflow
 
 ```bash
 BASE=http://localhost:3000/api/v1
 curl -c cookies.txt -H 'Content-Type: application/json' -d '{"email":"alex@example.com","password":"correct-horse-battery-staple","displayName":"Alex"}' "$BASE/auth/register"
 TOKEN='<access token from response>'
-curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name":"Example Team","slug":"example-team"}' "$BASE/teams"
+curl -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: create-example-team' -H 'Content-Type: application/json' -d '{"name":"Example Team","slug":"example-team"}' "$BASE/teams"
 curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name":"Launch"}' "$BASE/teams/<teamId>/projects"
 curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"userId":"<userId>","role":"MEMBER"}' "$BASE/projects/<projectId>/members"
 curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"title":"Prepare release notes","assigneeId":"<userId>"}' "$BASE/projects/<projectId>/tasks"
@@ -85,7 +87,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{
 
 ## Attachment sequence
 
-Initialize at `POST /tasks/{taskId}/attachments/uploads`, PUT the bytes to the returned ten-minute URL using the declared `Content-Type`, call `POST /attachments/{id}/complete`, then request a five-minute URL from `/download-url`. The API performs a HEAD check for size/type before READY. Binaries never enter PostgreSQL. Configure a 24-hour bucket lifecycle safety rule in production in addition to the cleanup worker.
+Initialize at `POST /tasks/{taskId}/attachments/uploads`, PUT the bytes to the returned ten-minute URL using the declared `Content-Type`, call `POST /attachments/{id}/complete`, then request a five-minute URL from `/download-url`. The API performs a HEAD check for size/type before READY. Binaries never enter PostgreSQL. The worker removes stale `PENDING` records and their objects on startup and every hour; run one worker process in local and deployed environments. Configure a 24-hour bucket lifecycle safety rule in production as a second safety net.
 
 ## Optional notifications and AI
 

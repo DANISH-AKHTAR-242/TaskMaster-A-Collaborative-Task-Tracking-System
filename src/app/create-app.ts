@@ -10,8 +10,7 @@ import { errorHandler } from './middleware/error-handler.js';
 import { notFoundHandler } from './middleware/not-found.js';
 import { requestId } from './middleware/request-id.js';
 import { requestLogger } from './middleware/request-logger.js';
-import { generalRateLimit } from './middleware/rate-limit.js';
-import { mutationAudit } from './middleware/mutation-audit.js';
+import { createGeneralRateLimit } from './middleware/rate-limit.js';
 import { createRoutes } from './routes.js';
 
 export interface AppDependencies {
@@ -39,8 +38,7 @@ export function createApp({ env, database }: AppDependencies): Express {
   );
   app.use(express.json({ limit: MAX_JSON_BODY_BYTES, type: 'application/json' }));
   app.use(cookieParser());
-  app.use(generalRateLimit);
-  app.use(mutationAudit(database));
+  app.use(createGeneralRateLimit());
   app.use(API_PREFIX, createRoutes(database, env));
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: taskmaster
       POSTGRES_DB: taskmaster
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '${POSTGRES_PORT:-5433}:5432'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U taskmaster -d taskmaster']
       interval: 5s

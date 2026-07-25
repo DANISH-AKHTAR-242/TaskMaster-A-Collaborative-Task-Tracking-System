@@ -7,4 +7,8 @@ describe('idempotency request binding', () => {
       assertIdempotentReplay(hash, { a: 2, b: 2 });
     }).toThrow();
   });
+
+  it('hashes body-less requests deterministically', () => {
+    expect(normalizedRequestHash(undefined)).toBe(normalizedRequestHash(null));
+  });
 });

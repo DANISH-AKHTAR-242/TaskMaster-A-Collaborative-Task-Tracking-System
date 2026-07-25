@@ -39,4 +39,38 @@ describe('JWT access tokens', () => {
       ),
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
+
+  it('rejects tokens with the wrong issuer or an expired timestamp', async () => {
+    const keys = await generateKeyPair('RS256', { extractable: true });
+    const privateKey = Buffer.from(await exportPKCS8(keys.privateKey)).toString('base64');
+    const publicKey = Buffer.from(await exportSPKI(keys.publicKey)).toString('base64');
+    const verifier = new JwtService({
+      JWT_PRIVATE_KEY_BASE64: privateKey,
+      JWT_PUBLIC_KEY_BASE64: publicKey,
+      JWT_ISSUER: 'taskmaster-api',
+      JWT_AUDIENCE: 'taskmaster-client',
+      ACCESS_TOKEN_TTL_SECONDS: 900,
+    });
+    const wrongIssuer = new JwtService({
+      JWT_PRIVATE_KEY_BASE64: privateKey,
+      JWT_PUBLIC_KEY_BASE64: publicKey,
+      JWT_ISSUER: 'untrusted-issuer',
+      JWT_AUDIENCE: 'taskmaster-client',
+      ACCESS_TOKEN_TTL_SECONDS: 900,
+    });
+    const expired = new JwtService({
+      JWT_PRIVATE_KEY_BASE64: privateKey,
+      JWT_PUBLIC_KEY_BASE64: publicKey,
+      JWT_ISSUER: 'taskmaster-api',
+      JWT_AUDIENCE: 'taskmaster-client',
+      ACCESS_TOKEN_TTL_SECONDS: -1,
+    });
+    const claims = { userId: crypto.randomUUID(), sessionId: crypto.randomUUID() };
+    await expect(verifier.verify(await wrongIssuer.sign(claims))).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+    await expect(verifier.verify(await expired.sign(claims))).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+  });
 });

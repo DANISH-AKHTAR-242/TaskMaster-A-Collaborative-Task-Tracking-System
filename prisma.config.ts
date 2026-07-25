@@ -11,6 +11,6 @@ export default defineConfig({
     url:
       process.env['DIRECT_DATABASE_URL'] ??
       process.env['DATABASE_URL'] ??
-      'postgresql://taskmaster:taskmaster@localhost:5432/taskmaster',
+      'postgresql://taskmaster:taskmaster@localhost:5433/taskmaster',
   },
 });

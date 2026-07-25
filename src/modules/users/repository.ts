@@ -1,7 +1,7 @@
-import type { DatabaseClient } from '../../infrastructure/database/prisma.js';
+import type { DatabaseHandle } from '../../infrastructure/database/prisma.js';
 
 export class UserRepository {
-  public constructor(private readonly database: DatabaseClient) {}
+  public constructor(private readonly database: DatabaseHandle) {}
 
   public findActiveById(id: string) {
     return this.database.user.findFirst({ where: { id, deletedAt: null } });

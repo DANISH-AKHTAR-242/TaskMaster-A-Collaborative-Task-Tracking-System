@@ -4,11 +4,13 @@ import { PrismaClient } from '../src/generated/prisma/client.js';
 
 if (process.env['NODE_ENV'] === 'production') throw new Error('Seed is disabled in production');
 const url =
-  process.env['DATABASE_URL'] ?? 'postgresql://taskmaster:taskmaster@localhost:5432/taskmaster';
+  process.env['DATABASE_URL'] ?? 'postgresql://taskmaster:taskmaster@localhost:5433/taskmaster';
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
 const password = 'development-password-only';
 const passwordHash = await hash(password, { type: 2 });
 await db.$transaction(async (tx) => {
+  await tx.idempotencyKey.deleteMany();
+  await tx.auditLog.deleteMany();
   await tx.notification.deleteMany();
   await tx.outboxEvent.deleteMany();
   await tx.taskAttachment.deleteMany();

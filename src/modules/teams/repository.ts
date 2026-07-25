@@ -1,15 +1,15 @@
 import type { TeamRole } from '../../generated/prisma/enums.js';
-import type { DatabaseClient } from '../../infrastructure/database/prisma.js';
+import { inTransaction, type DatabaseHandle } from '../../infrastructure/database/prisma.js';
 
 export class TeamRepository {
-  public constructor(private readonly db: DatabaseClient) {}
+  public constructor(private readonly db: DatabaseHandle) {}
   membership(teamId: string, userId: string) {
     return this.db.teamMember.findFirst({
       where: { teamId, userId, removedAt: null, team: { deletedAt: null } },
     });
   }
   createWithOwner(userId: string, input: { name: string; slug: string }) {
-    return this.db.$transaction(async (tx) => {
+    return inTransaction(this.db, async (tx) => {
       const team = await tx.team.create({ data: { ...input, createdBy: userId } });
       await tx.teamMember.create({ data: { teamId: team.id, userId, role: 'OWNER' } });
       return team;
@@ -59,7 +59,7 @@ export class TeamRepository {
     });
   }
   transfer(teamId: string, currentUserId: string, newUserId: string) {
-    return this.db.$transaction(async (tx) => {
+    return inTransaction(this.db, async (tx) => {
       await tx.teamMember.update({
         where: { teamId_userId: { teamId, userId: newUserId } },
         data: { role: 'OWNER' },
@@ -107,7 +107,7 @@ export class TeamRepository {
     return this.db.teamInvitation.findUnique({ where: { tokenHash }, include: { team: true } });
   }
   acceptInvitation(id: string, teamId: string, userId: string, role: TeamRole) {
-    return this.db.$transaction(async (tx) => {
+    return inTransaction(this.db, async (tx) => {
       const invitation = await tx.teamInvitation.updateMany({
         where: { id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
         data: { acceptedAt: new Date() },
