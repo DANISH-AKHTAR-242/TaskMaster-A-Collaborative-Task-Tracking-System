@@ -531,6 +531,15 @@ describe('TaskMaster integration workflow', () => {
   it('enforces invitation state, last-owner safety, and project membership boundaries', async () => {
     const app = createApp({ env, database: db });
     const fixture = await projectFixture(app, 'invitations');
+    const initialTeamMembers = await request(app)
+      .get(`/api/v1/teams/${fixture.teamId}/members`)
+      .set(auth(fixture.token))
+      .expect(200);
+    expect(
+      (initialTeamMembers.body as { data: Json[] }).data.find(
+        (member) => member['userId'] === fixture.userId,
+      )?.['role'],
+    ).toBe('OWNER');
     const invited = await register(app, 'invitations-member@example.com', 'Invited');
     const mismatch = await register(app, 'invitations-mismatch@example.com', 'Mismatch');
     const invitedId = (invited['user'] as Json)['id'] as string;
@@ -591,10 +600,21 @@ describe('TaskMaster integration workflow', () => {
       .send({ role: 'ADMIN' })
       .expect(409);
     await request(app)
+      .post(`/api/v1/teams/${fixture.teamId}/invitations`)
+      .set(auth(invitedToken))
+      .send({ email: 'member-cannot-invite@example.com', role: 'MEMBER' })
+      .expect(403);
+    await request(app)
       .patch(`/api/v1/teams/${fixture.teamId}/members/${invitedId}`)
       .set(auth(fixture.token))
       .send({ role: 'OWNER' })
       .expect(200);
+
+    await request(app)
+      .post(`/api/v1/teams/${fixture.teamId}/invitations`)
+      .set(auth(invitedToken))
+      .send({ email: 'not-allowed@example.com', role: 'MEMBER' })
+      .expect(201);
 
     await request(app)
       .get(`/api/v1/projects/${fixture.projectId}`)
@@ -604,11 +624,51 @@ describe('TaskMaster integration workflow', () => {
       .get(`/api/v1/projects/${fixture.projectId}/tasks`)
       .set(auth(invitedToken))
       .expect(404);
+
+    await request(app)
+      .post(`/api/v1/teams/${fixture.teamId}/ownership-transfer`)
+      .set(auth(fixture.token))
+      .send({ newOwnerUserId: invitedId })
+      .expect(204);
+    await request(app)
+      .delete(`/api/v1/teams/${fixture.teamId}`)
+      .set(auth(fixture.token))
+      .expect(403);
+    await request(app)
+      .delete(`/api/v1/teams/${fixture.teamId}`)
+      .set(auth(invitedToken))
+      .expect(204);
+    await request(app).get(`/api/v1/teams/${fixture.teamId}`).set(auth(invitedToken)).expect(404);
+    await request(app)
+      .post(`/api/v1/teams/${fixture.teamId}/restore`)
+      .set(auth(invitedToken))
+      .expect(200);
+    await request(app)
+      .delete(`/api/v1/projects/${fixture.projectId}`)
+      .set(auth(fixture.token))
+      .expect(204);
+    await request(app)
+      .get(`/api/v1/projects/${fixture.projectId}`)
+      .set(auth(fixture.token))
+      .expect(404);
+    await request(app)
+      .post(`/api/v1/projects/${fixture.projectId}/restore`)
+      .set(auth(fixture.token))
+      .expect(200);
   });
 
   it('enforces project-content roles, assignee rules, comments, task lifecycle, and audit writes', async () => {
     const app = createApp({ env, database: db });
     const fixture = await projectFixture(app, 'policy');
+    const initialProjectMembers = await request(app)
+      .get(`/api/v1/projects/${fixture.projectId}/members`)
+      .set(auth(fixture.token))
+      .expect(200);
+    expect(
+      (initialProjectMembers.body as { data: Json[] }).data.find(
+        (member) => member['userId'] === fixture.userId,
+      )?.['role'],
+    ).toBe('ADMIN');
     const viewer = await register(app, 'policy-viewer@example.com', 'Viewer');
     const outsider = await register(app, 'policy-outsider@example.com', 'Outsider');
     const viewerId = (viewer['user'] as Json)['id'] as string;
@@ -684,6 +744,11 @@ describe('TaskMaster integration workflow', () => {
       .set(auth(viewerToken))
       .send({ body: 'Forbidden comment' })
       .expect(403);
+    await request(app)
+      .post(`/api/v1/tasks/${task['id'] as string}/attachments/uploads`)
+      .set(auth(viewerToken))
+      .send({ filename: 'forbidden.txt', contentType: 'text/plain', sizeBytes: 1 })
+      .expect(403);
 
     const comment = data(
       await request(app)
@@ -693,6 +758,11 @@ describe('TaskMaster integration workflow', () => {
         .expect(201),
     );
     await request(app)
+      .patch(`/api/v1/comments/${comment['id'] as string}`)
+      .set(auth(fixture.token))
+      .send({ body: 'Author updated comment' })
+      .expect(200);
+    await request(app)
       .get(`/api/v1/tasks/${task['id'] as string}/comments`)
       .set(auth(viewerToken))
       .expect(200);
@@ -701,6 +771,29 @@ describe('TaskMaster integration workflow', () => {
       .set(auth(viewerToken))
       .send({ body: 'Not mine' })
       .expect(403);
+    await request(app)
+      .patch(`/api/v1/projects/${fixture.projectId}/members/${viewerId}`)
+      .set(auth(fixture.token))
+      .send({ role: 'MEMBER' })
+      .expect(200);
+    const memberComment = data(
+      await request(app)
+        .post(`/api/v1/tasks/${task['id'] as string}/comments`)
+        .set(auth(viewerToken))
+        .send({ body: 'Member comment for admin deletion' })
+        .expect(201),
+    );
+    await request(app)
+      .delete(`/api/v1/comments/${memberComment['id'] as string}`)
+      .set(auth(fixture.token))
+      .expect(204);
+    const visibleComments = await request(app)
+      .get(`/api/v1/tasks/${task['id'] as string}/comments`)
+      .set(auth(viewerToken))
+      .expect(200);
+    expect((visibleComments.body as { data: Json[] }).data.map((item) => item['id'])).not.toContain(
+      memberComment['id'],
+    );
 
     const completed = data(
       await request(app)
@@ -837,5 +930,42 @@ describe('TaskMaster integration workflow', () => {
       'DELETED',
     );
     expect(await storage.head(record.storageKey)).toBeNull();
+  });
+
+  it('returns stable validation, malformed JSON, authentication, and not-found problems', async () => {
+    const app = createApp({ env, database: db });
+    const malformed = await request(app)
+      .post('/api/v1/auth/register')
+      .set('Content-Type', 'application/json')
+      .send('{')
+      .expect(400);
+    const invalid = await request(app)
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'validation@example.com',
+        password: 'correct-horse-battery-staple',
+        displayName: 'Validation',
+        unexpected: true,
+      })
+      .expect(422);
+    const unauthenticated = await request(app).get('/api/v1/users/me').expect(401);
+    const missing = await request(app).get('/api/v1/does-not-exist').expect(404);
+    for (const response of [malformed, invalid, unauthenticated, missing]) {
+      const problem = response.body as Json;
+      expect(response.headers['content-type']).toContain('application/problem+json');
+      expect(problem['requestId']).toEqual(expect.any(String));
+      expect(problem['code']).toEqual(expect.any(String));
+      expect(problem['detail']).toEqual(expect.any(String));
+    }
+
+    const user = await register(app, 'validation-user@example.com', 'Validation User');
+    const token = user['accessToken'] as string;
+    await request(app).get('/api/v1/tasks/not-a-uuid').set(auth(token)).expect(422);
+    await request(app)
+      .post('/api/v1/teams')
+      .set(auth(token))
+      .set('Idempotency-Key', '   ')
+      .send({ name: 'Invalid Key', slug: 'invalid-key' })
+      .expect(422);
   });
 });
